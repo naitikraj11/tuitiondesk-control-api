@@ -73,6 +73,7 @@ class ClientLogin(BaseModel):
 
 
 class ClientCreate(BaseModel):
+    client_id: str = Field(default="", max_length=64)
     org: str = Field(min_length=1, max_length=200)
     username: str = Field(min_length=1, max_length=200)
     phone: str = Field(default="", max_length=40)
@@ -85,8 +86,14 @@ class ClientStatus(BaseModel):
 
 @app.get("/health")
 def health():
-    # Does not disclose database connectivity or secret configuration.
     return {"ok": True, "service": "TuitionDesk Control API"}
+
+
+@app.get("/health/db")
+def health_database():
+    # Publicly reports only pass/fail; never returns rows, keys, or provider errors.
+    db_request("GET", params={"select": "client_id", "limit": "1"})
+    return {"ok": True, "database": "connected"}
 
 
 def authenticate_client(username: str, password: str):
@@ -128,7 +135,9 @@ def create_client(payload: ClientCreate):
     if len(password) < 8:
         raise HTTPException(status_code=400, detail="Password must contain at least 8 characters.")
     salt, digest = hash_password(password)
-    client_id = secrets.token_hex(6)
+    client_id = payload.client_id.strip() or secrets.token_hex(6)
+    if not client_id or len(client_id)>64:
+        raise HTTPException(status_code=400, detail="Client ID is invalid.")
     row = {
         "client_id": client_id,
         "org": payload.org.strip(),
